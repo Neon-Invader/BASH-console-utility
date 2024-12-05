@@ -39,7 +39,6 @@ error_path=""
 
 # getopts анализирует (парсит) опции и аргументы команд, которые были переданы
 # $OPTIND - индекс опции; $OPTARG - доп. аргумент опции.
-# символ двоеточия, следующий за именем опции, указывает на то, что она имеет доп. арг (в нашем случае l, e, -)
 while getopts ":uphl:e:-:" opt; do
     case $opt in
         u)
@@ -58,7 +57,6 @@ while getopts ":uphl:e:-:" opt; do
         e)
             error_path="$OPTARG"
             ;;
-        # я крч в инете так нашел. наверное можно было как-то иначе, но вроде работает и ладно.
         -)
             case "${OPTARG}" in
             users)
@@ -116,8 +114,6 @@ if [[ -n $error_path ]]; then
     exec 2> "$error_path"
 fi
 
-
-# типа после присвоения 'action' какого-то параметра, можно что-то делать
 case $action in
     users)
         list_users
