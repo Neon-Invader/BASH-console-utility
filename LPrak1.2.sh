@@ -2,20 +2,19 @@
 
 function list_users {
     echo "List of users"
-    awk -F':' '{ print $1, $6 }' /etc/passwd | sort
+    awk -F: '$3 >= 1000 { print $1, $6 }' /etc/passwd | sort
 }
-
 #   awk: это утилита для обработки текстовых данных.
 #   -F':': устанавливает символ : в качестве разделителя полей. В файле /etc/passwd каждый пользователь представлен строкой, где данные разделены двоеточиями.
 #   '{ print $1, $6 }': команда awk, которая выводит первое ($1) и шестое ($6) поля для каждой строки:
 #       $1 — это имя пользователя.
 #       $6 — это домашний каталог пользователя.
+#       $3 >= 1000 - убирает и списка пользователей
 
 function list_processes {
     echo "List of processes"
     ps -eo pid,comm --sort=pid
 }
-
 #    ps: команда для отображения информации о текущих процессах.
 #   -e: этот параметр говорит команде ps, что нужно отобразить все процессы, запущенные в системе, а не только процессы текущего пользователя.
 #   -o: указывает формат вывода. В данном случае, указываются поля, которые будут выводиться.
@@ -25,7 +24,7 @@ function list_processes {
 
 # функция для вывода подсказок (справки) о командах
 function show_help {
-    echo "Uasge: $0 [options]"
+    echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -u, --users            List users and their home directories"
     echo "  -p, --processes        List running processes"
@@ -36,6 +35,17 @@ function show_help {
 
 log_path=""
 error_path=""
+action=""
+
+# Функция для записи сообщений об ошибках в файл
+log_error() {
+    local message="$1"
+    if [[ -n "$error_path" ]]; then
+        echo "Error: $message" >> "$error_path"
+    else
+        echo "Error: $message" >&2
+    fi
+}
 
 # getopts анализирует (парсит) опции и аргументы команд, которые были переданы
 # $OPTIND - индекс опции; $OPTARG - доп. аргумент опции.
@@ -52,9 +62,17 @@ while getopts ":uphl:e:-:" opt; do
             exit 0
             ;;
         l)
+            if [[ -z "$OPTARG" ]]; then
+                echo "Option -l requires an argument." >&2
+                exit 1
+            fi
             log_path="$OPTARG"
             ;;
         e)
+            if [[ -z "$OPTARG" ]]; then
+                log_error "Option -e requires an argument." >&2
+                exit 1
+            fi
             error_path="$OPTARG"
             ;;
         -)
@@ -76,43 +94,56 @@ while getopts ":uphl:e:-:" opt; do
                 error_path="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                 ;;
              *)
-                echo "Invalid option: --${OPTARG}" >&2
+                log_error "Invalid option: --${OPTARG}" >&2
                 exit 1
                 ;;
             esac
             ;;
         \?)
-            echo "Invalid opion: -$OPTARG" >&2
+            log_error "Invalid opion: -$OPTARG" >&2
             exit 1
             ;;
         :)
-            echo "Option -$OPTARG requirs an argument." >&2
+            log_error "Option -$OPTARG requirs an argument." >&2
             exit 1
             ;;
     esac
 done
-
 # &> перенаправляет stdout, stderr в один файл
 # >&2 перенаправляет stdout в stderr
 # 2> перенаправляет stderr в указанный файл
 # dev/null - спец. файл "черная дыра"
 
-# Доступность путей
-if [[ -n $log_path ]]; then
-    if ! touch "$log_path" &> /dev/null; then
-        echo "Can not write to log file: $log_path" >&2
+# Функция проверки доступности пути и создание файла, если необходимо
+check_and_create_file() {
+    local path="$1"
+    if [[ ! -d "$(dirname "$path")" ]]; then
+        log_error "Error: The '$path' directory does not exist." >&2
         exit 1
     fi
+
+    if [[ -f "$path" ]]; then
+        echo "Warning: The file '$path' exists. Will be overwritten." >&2
+    fi
+    touch "$path" 
+    if [[ ! -w "$path" ]]; then
+        log_error "Error: No write permission to '$path'" >&2
+        exit 1
+    fi
+}
+
+# Перенаправление стандартного вывода
+if [[ -n "$log_path" ]]; then
+    check_and_create_file "$log_path"
     exec > "$log_path"
 fi
 
-if [[ -n $error_path ]]; then
-    if ! touch "$error_path" &> /dev/null; then
-        echo "Can not write to log file: $error_path" >&2
-        exit 1
-    fi
+# Перенаправление вывода ошибок
+if [[ -n "$error_path" ]]; then
+    check_and_create_file "$error_path"
     exec 2> "$error_path"
 fi
+
 
 case $action in
     users)
@@ -122,7 +153,7 @@ case $action in
         list_processes
         ;;
     *)
-        echo "Error." >&2
+        log_error "Error: no action specified." >&2
         show_help
         exit 1
         ;;
